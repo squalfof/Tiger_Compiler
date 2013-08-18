@@ -1,0 +1,674 @@
+
+%{
+
+#include "absyn.h"
+#include "errormsg.h"
+#include "util.h"
+#include "symbol.h" 
+#include "prabsyn.h"
+
+#include <stdio.h>
+
+#define INDENT	4
+#define TNULL	0
+
+int yylex(void); /* function prototype */
+
+A_exp absyn_root;
+
+
+void yyerror(char *s)
+{
+ EM_error(EM_tokPos, "%s", s);
+}
+%}
+
+
+%union {
+	int			pos;
+	int			ival;
+	string		sval;
+	A_var		var;
+	A_exp		exp;
+	A_expList	expList;
+	A_decList	decList;
+	A_dec		dec;
+	A_ty		ty;
+	A_namety	namety;
+	A_nametyList	nametyList;
+	A_fundec	funcdec;
+	A_fundecList	funcdecList;
+	A_field		field;
+	A_fieldList fieldList;
+	A_efield	efield; 
+	A_efieldList	efieldList;
+	}	
+
+%token 	<sval> 	ID STRING
+%token 	<ival> 	INT
+
+%token 
+  COMMA COLON SEMICOLON LPAREN RPAREN LBRACK RBRACK 
+  LBRACE RBRACE DOT 
+  PLUS MINUS TIMES DIVIDE EQ NEQ LT LE GT GE
+  AND OR ASSIGN
+  ARRAY IF THEN ELSE WHILE FOR TO DO LET IN END OF 
+  BREAK NIL
+  FUNCTION VAR TYPE 
+
+%left	EQ NEQ LT LE GT GE
+%left	MINUS	PLUS
+%left	TIMES	DIVIDE
+%left	UMINUS
+
+%right	THEN ELSE
+
+%type <exp>	exp  program
+%type <exp>	id_exp   
+%type <exp> nil_exp
+%type <exp> int_exp
+%type <exp> str_exp
+%type <exp> binary_op_exp
+%type <exp> unary_op_exp
+
+%type <exp>		func_call_exp
+%type <expList> arg_list
+
+%type <exp>		sequence_exp
+%type <expList> seq_exp_list
+
+%type <exp> val_assign_exp
+%type <var> lvalue
+
+%type <exp> 		record_create_exp
+%type <efield>		record_exp;
+%type <efieldList>	record_exp_list;
+
+%type <exp> array_create_exp
+%type <exp> if_stmt_exp
+%type <exp> while_stmt_exp
+%type <exp> for_stmt_exp
+%type <exp> let_stmt_exp
+
+%type <decList>	decs
+%type <dec>		dec
+%type <dec>		tydec	vardec	funcdec
+
+%type <namety>		namety
+%type <nametyList>	namety_list
+
+%type <funcdec>		functydec
+%type <funcdecList>	functydec_list
+
+%type <field>		recordty
+%type <fieldList>	recordty_list
+
+
+%type <field>		param
+%type <fieldList>	param_list
+
+
+	
+
+%start program
+
+%%
+
+program:	exp    
+{	
+	A_exp root_exp = $1;
+	absyn_root = root_exp;
+	pr_exp(stdout, root_exp, INDENT);
+}				
+;
+
+
+/********************************
+ ********** exp DEC *************
+ ********************************/
+
+exp:	id_exp				|
+		nil_exp				|
+		int_exp				|
+		str_exp				|
+		binary_op_exp		|
+		unary_op_exp		|
+		func_call_exp		|
+		sequence_exp		|
+		val_assign_exp		|
+		record_create_exp	|
+		array_create_exp	|
+		if_stmt_exp			|
+		while_stmt_exp		|
+		for_stmt_exp		|
+		let_stmt_exp
+;
+
+//-----------------------
+id_exp:		ID		
+{	
+	A_var id_var = A_SimpleVar(EM_tokPos, S_Symbol($1));
+	A_exp id_exp = A_VarExp(EM_tokPos, id_var);
+	//pr_exp(stdout, id_exp, INDENT);
+	$$ = id_exp;
+	//printf("\n");
+}
+;
+
+//------------------------
+nil_exp:	NIL
+{
+	A_exp nil_exp = A_NilExp(EM_tokPos);		
+	//pr_exp(stdout, nil_exp, INDENT);  
+	$$ = nil_exp;
+	//printf("\n");
+}
+;
+
+//------------------------------
+int_exp:	INT
+{
+	A_exp int_exp = A_IntExp(EM_tokPos, $1);
+	//pr_exp(stdout, int_exp, INDENT);
+	$$ = int_exp;
+	//printf("\n");
+}
+;
+
+//-------------------------------
+str_exp:	STRING
+{
+	A_exp str_exp = A_StringExp(EM_tokPos, $1);
+	//pr_exp(stdout, str_exp, INDENT);
+	$$ = str_exp;
+	//printf("\n");
+}
+;
+
+
+//-------------------------------
+binary_op_exp: exp PLUS exp		
+{	
+	A_exp left = $1;
+	A_exp right = $3;
+	A_exp op_exp = A_OpExp(EM_tokPos, A_plusOp, left, right);
+	//pr_exp(stdout, op_exp, INDENT);
+	$$ = op_exp;
+	//printf("\n");
+} 
+| exp MINUS exp		
+{	
+	A_exp left = $1;
+	A_exp right = $3;
+	A_exp op_exp = A_OpExp(EM_tokPos, A_minusOp, left, right);
+	//pr_exp(stdout, op_exp, INDENT);
+	$$ = op_exp;
+	//printf("\n");
+}
+| exp TIMES exp		
+{	
+	A_exp left = $1;
+	A_exp right = $3;
+	A_exp op_exp = A_OpExp(EM_tokPos, A_timesOp, left, right);
+	//pr_exp(stdout, op_exp, INDENT);
+	$$ = op_exp;
+	//printf("\n");
+}
+| exp DIVIDE exp		
+{	
+	A_exp left = $1;
+	A_exp right = $3;
+	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	//pr_exp(stdout, op_exp, INDENT);
+	$$ = op_exp;
+	//printf("\n");
+}
+| exp EQ exp
+{
+	A_exp left = $1;
+	A_exp right = $3;
+	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	//pr_exp(stdout, op_exp, INDENT);
+	$$ = op_exp;
+	//printf("\n");
+}
+| exp LT exp
+{
+	A_exp left = $1;
+	A_exp right = $3;
+	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	//pr_exp(stdout, op_exp, INDENT);
+	$$ = op_exp;
+	//printf("\n");
+}
+| exp LE exp
+{
+	A_exp left = $1;
+	A_exp right = $3;
+	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	//pr_exp(stdout, op_exp, INDENT);
+	$$ = op_exp;
+	//printf("\n");
+}
+| exp GT exp
+{
+	A_exp left = $1;
+	A_exp right = $3;
+	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	//pr_exp(stdout, op_exp, INDENT);
+	$$ = op_exp;
+	//printf("\n");
+}
+| exp GE exp
+{
+	A_exp left = $1;
+	A_exp right = $3;
+	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	//pr_exp(stdout, op_exp, INDENT);
+	$$ = op_exp;
+	//printf("\n");
+}
+;
+
+
+//----------------------------------
+unary_op_exp:	MINUS exp %prec UMINUS
+{   
+	/* SHOULD TAKE CARE */
+	A_exp only_oper = $2;
+	A_exp op_exp = A_OpExp(EM_tokPos, A_neqOp, TNULL, only_oper);
+	//pr_exp(stdout, op_exp, INDENT);
+	$$ = op_exp;
+	//printf("\n");
+}
+;
+
+
+//------------------------------------------
+func_call_exp:	ID LPAREN arg_list RPAREN 
+{	
+	S_symbol func_sym = S_Symbol($1);
+	A_exp call_exp = A_CallExp(EM_tokPos, func_sym, $3);
+	//pr_exp(stdout, call_exp, INDENT);
+	$$ = call_exp;
+	//printf("\n");
+}
+;
+
+arg_list: /* EMPTY */			
+{	
+	$$ = TNULL; 
+}
+| exp
+{	
+	A_expList exp_list = A_ExpList($1, TNULL);
+	$$ = exp_list;
+}
+| arg_list COMMA exp
+{
+	if (TNULL == $1)
+	{
+		printf("Invalid argument list\n");
+		return 1;
+	}
+	else
+	{
+		A_expList exp_list = $1, exp_list_temp = $1;
+		while (exp_list->tail) 	
+			exp_list = exp_list->tail;
+		exp_list->tail = A_ExpList($3, TNULL);
+		$$ = exp_list_temp;
+	}
+}
+;
+
+//------------------------------------------
+sequence_exp:	LPAREN seq_exp_list RPAREN	
+{	 
+	A_exp seq_exp = A_SeqExp(EM_tokPos, $2);
+	//pr_exp(stdout, seq_exp, INDENT);
+	$$ = seq_exp;
+	//printf("\n");
+}
+;
+
+seq_exp_list:	exp
+{
+	A_expList exp_list = A_ExpList($1, TNULL);
+	$$ = exp_list;
+}
+| seq_exp_list SEMICOLON exp
+{
+	A_expList exp_list = $1, exp_list_temp = $1;
+	// PUSH BACK exp as the last argument
+	while (exp_list->tail) 	
+		exp_list = exp_list->tail;
+	exp_list->tail = A_ExpList($3, TNULL);
+	$$ = exp_list_temp;
+}
+;
+
+//-------------------------------------
+val_assign_exp:	lvalue ASSIGN exp			
+{
+	A_exp assign_exp = A_AssignExp(EM_tokPos, $1, $3);
+	//pr_exp(stdout, assign_exp, INDENT);
+	$$ = assign_exp;	
+	//printf("\n");
+}
+;
+
+lvalue: ID						
+{	
+	A_var id_var = A_SimpleVar(EM_tokPos, S_Symbol($1));
+	pr_var(stdout, id_var, INDENT);
+	$$ = id_var;	
+}
+| lvalue DOT ID			
+{	
+	A_var field_var = A_FieldVar(EM_tokPos, $1, S_Symbol($3));
+	pr_var(stdout, field_var, INDENT);
+	$$ = field_var;	
+}
+| lvalue LBRACK exp RBRACK	
+{	
+	A_var subscript_var = A_SubscriptVar(EM_tokPos, $1, $3);
+	pr_var(stdout, subscript_var, INDENT);
+	$$ = subscript_var;	
+ }
+;
+
+
+//----------------------------------------------
+record_create_exp:	ID LBRACE record_exp_list RBRACE
+{
+	$$ = A_RecordExp(EM_tokPos, S_Symbol($1), $3);
+}
+;
+
+record_exp_list: /* EMPTY */
+{
+	$$ = TNULL;
+}
+| record_exp
+{
+	$$ = A_EfieldList($1, TNULL);
+}
+| record_exp_list COMMA record_exp
+{
+	if (TNULL == $1)
+	{
+		EM_error(EM_tokPos, "Invalid record_exp_list\n");
+		return 1;
+	}
+	else
+	{
+		A_efieldList record_exp_list = $1, record_exp_list_temp = $1;
+		while (record_exp_list->tail)
+			record_exp_list = record_exp_list->tail;
+		record_exp_list->tail = A_EfieldList($3, TNULL);
+		$$ = record_exp_list_temp;
+	}		
+}
+;
+
+record_exp:	ID EQ exp
+{
+	$$ = A_Efield(S_Symbol($1), $3);
+}
+;
+				
+//----------------------------------------------
+array_create_exp:	ID LBRACK exp RBRACK OF exp 
+{	
+	S_symbol arr_sym = S_Symbol($1);
+	A_exp size = $3;
+	A_exp init = $6;
+	A_exp arr_exp = A_ArrayExp(EM_tokPos, arr_sym, size, init);
+	//pr_exp(stdout, arr_exp, INDENT);
+	$$ = arr_exp;	
+	//printf("\n");
+}
+;
+
+//-----------------------------------------------	
+if_stmt_exp: IF exp THEN exp ELSE exp	
+{	
+	A_exp if_exp = A_IfExp(EM_tokPos, $2, $4, $6);
+	//pr_exp(stdout, if_exp, INDENT);
+	$$ = if_exp;
+	//printf("\n");
+}
+| IF exp THEN exp				
+{	
+	A_exp if_exp = A_IfExp(EM_tokPos, $2, $4, 0);
+	//pr_exp(stdout, if_exp, INDENT);
+	$$ = if_exp;
+	//printf("\n");
+}
+;
+
+//-----------------------------------------------
+while_stmt_exp:		WHILE exp DO exp			
+{	
+	A_exp while_exp = A_WhileExp(EM_tokPos, $2, $4);
+	//pr_exp(stdout, while_exp, INDENT);
+	$$ = while_exp;
+	//printf("\n");	
+}	
+;	
+
+//-----------------------------------------------
+for_stmt_exp:	FOR ID ASSIGN exp TO exp DO exp	
+{	
+	S_symbol id_sym = S_Symbol($2);
+	A_exp for_exp = A_ForExp(EM_tokPos, id_sym, $4, $6, $8);
+	//pr_exp(stdout, for_exp, INDENT);
+	$$ = for_exp;	
+	//printf("\n");
+}
+;
+
+//-----------------------------------------------
+let_stmt_exp:	LET decs IN seq_exp_list END		
+{
+	A_decList decs = $2;
+	A_exp body = A_SeqExp(EM_tokPos, $4);
+	A_exp let_exp = A_LetExp(EM_tokPos, decs, body);
+	//pr_exp(stdout, let_exp, INDENT);
+	$$ = let_exp;	
+	//printf("\n");
+}
+;
+
+
+
+/********************************
+ ********** Dec DEC *************
+ ********************************/
+ 
+decs:	dec
+{
+	$$ = A_DecList($1, TNULL);
+}
+| decs	dec
+{	
+	A_decList dec_list = $1, dec_list_temp = $1;
+	// PUSH BACK dec as the last 
+	while (dec_list->tail)  
+		dec_list = dec_list->tail;
+	dec_list->tail = A_DecList($2, TNULL);
+	$$ = dec_list_temp;
+}
+;
+
+dec:	tydec	|
+		vardec	|
+		funcdec		
+;			
+
+
+//---------------------------------------------------
+tydec: namety_list
+{
+	$$ = A_TypeDec(EM_tokPos, $1);
+}
+;
+
+namety_list: namety
+{
+	$$ = A_NametyList($1, TNULL);
+}
+| namety_list namety
+{
+	A_nametyList namety_list = $1, namety_list_temp = $1;
+	while (namety_list->tail)
+		namety_list = namety_list->tail;
+	namety_list->tail = A_NametyList($2, TNULL);
+	$$ = namety_list_temp;		
+}
+
+namety:	TYPE ID EQ ID	
+{	
+	S_symbol name_sym = S_Symbol($2);
+	A_ty namety = A_NameTy(EM_tokPos, S_Symbol($4));
+	$$ = A_Namety(name_sym, namety);
+}
+| TYPE ID EQ LBRACE recordty_list RBRACE	
+{	
+	S_symbol name_sym = S_Symbol($2);
+	A_ty recordty = A_RecordTy(EM_tokPos, $5);
+	$$ = A_Namety(name_sym, recordty); 
+}
+| TYPE ID EQ ARRAY OF ID	
+{	
+	S_symbol name_sym = S_Symbol($2);
+	A_ty arrayty = A_ArrayTy(EM_tokPos, S_Symbol($6));
+	$$ = A_Namety(name_sym, arrayty);
+}											
+;
+
+recordty_list:	/* EMPTY */						
+{	
+	$$ = TNULL; 
+}
+| recordty
+{	
+	$$ = A_FieldList($1, TNULL);
+} 
+| recordty_list COMMA recordty
+{
+	if (TNULL == $1)
+	{
+		EM_error(EM_tokPos, "Invalid RECORD Type\n");
+		return 1;
+	}
+	else
+	{
+		A_fieldList recordty_list = $1, recordty_list_temp = $1;
+		while (recordty_list->tail)  
+			recordty_list = recordty_list->tail;
+		recordty_list->tail = A_FieldList($3, TNULL);
+		$$ = recordty_list_temp;
+	}
+}
+;
+
+recordty:	ID COLON ID					
+{	
+	$$ = A_Field(EM_tokPos, S_Symbol($1), S_Symbol($3));
+}
+;
+
+
+//---------------------------------------------------											
+vardec:	VAR	ID ASSIGN exp				
+{	
+	S_symbol var_sym = S_Symbol($2);
+	S_symbol ty_sym = TNULL;
+	A_exp init_exp = $4;
+	$$ = A_VarDec(EM_tokPos, var_sym, ty_sym, init_exp);
+}
+| VAR ID COLON ID ASSIGN exp	
+{	
+	S_symbol var_sym = S_Symbol($2);
+	S_symbol ty_sym = S_Symbol($4);
+	A_exp init_exp = $6;
+	$$ = A_VarDec(EM_tokPos, var_sym, ty_sym, init_exp); 
+}
+;
+
+
+//---------------------------------------------------
+funcdec:	functydec_list
+{
+	$$ = A_FunctionDec(EM_tokPos, $1);
+}
+;
+
+functydec_list:	functydec
+{
+	$$ = A_FundecList($1, TNULL);
+}
+| functydec_list functydec
+{
+	A_fundecList funcdec_list = $1, funcdec_list_temp = $1;
+	while (funcdec_list->tail)
+		funcdec_list = funcdec_list->tail;
+	funcdec_list->tail = A_FundecList($2, TNULL);
+	$$ = funcdec_list_temp;		
+}
+;
+
+functydec:	FUNCTION ID LPAREN param_list RPAREN EQ exp 
+{	
+	S_symbol fun_sym = S_Symbol($2);
+	A_fieldList params = $4;
+	S_symbol res_sym = TNULL;
+	A_exp body_exp = $7;
+	$$ = A_Fundec(EM_tokPos, fun_sym, params, res_sym, body_exp);
+}										
+| FUNCTION ID LPAREN param_list RPAREN COLON ID EQ exp 
+{	
+	S_symbol fun_sym = S_Symbol($2);
+	A_fieldList params = $4;
+	S_symbol res_sym = S_Symbol($7);
+	A_exp body_exp = $9;
+	$$ = A_Fundec(EM_tokPos, fun_sym, params, res_sym, body_exp);
+}
+;			 			
+
+param_list:	/* EMPTY */					
+{	
+	$$ = TNULL; 
+}
+| param
+{
+	$$ = A_FieldList($1, TNULL);
+}
+| param_list COMMA param
+{
+	if (TNULL == $1)
+	{
+		printf("Invalid Param List\n");
+		return 1;
+	}
+	else
+	{
+		A_fieldList param_list = $1, param_list_temp = $1;
+		// PUSH BACK param
+		while (param_list->tail) 
+			param_list = param_list->tail;
+		param_list->tail = A_FieldList($3, TNULL);
+		$$ = param_list_temp;
+	}		
+}											
+;
+
+param:	ID COLON ID		
+{ 
+	$$ = A_Field(EM_tokPos, S_Symbol($1), S_Symbol($3)); 
+}
+;	
+					 					 				 
+%%
