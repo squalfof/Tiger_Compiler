@@ -1,4 +1,3 @@
-
 %{
 #include <string.h>
 #include "util.h"
@@ -30,7 +29,7 @@ void adjust(void)
 
 
 "/*"                  { adjust(); 
-						BEGIN(COMMENT); }
+			BEGIN(COMMENT); }
 <COMMENT>\n           /* eat up newline */
 <COMMENT>[^*\n]*      /* eat up any char except * */
 <COMMENT>"*"+[^*/\n]* /* eat separate * without */
@@ -38,7 +37,8 @@ void adjust(void)
 			BEGIN(INITIAL); }
 						
 						
-"\""              { 	adjust(); 
+"\""              { 	yymore();
+			adjust(); 
 			BEGIN(STR); }
 <STR>[^"]*        { 	yymore(); /* append the end quote */ }
 <STR>"\""         { 	adjust();
