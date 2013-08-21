@@ -56,12 +56,14 @@ void yyerror(char *s)
   BREAK NIL
   FUNCTION VAR TYPE 
 
+
+%right	THEN ELSE
+
 %left	EQ NEQ LT LE GT GE
 %left	MINUS	PLUS
 %left	TIMES	DIVIDE
 %left	UMINUS
 
-%right	THEN ELSE
 
 %type <exp>	exp  program
 %type <exp>	id_exp   
@@ -227,7 +229,7 @@ binary_op_exp: exp PLUS exp
 {
 	A_exp left = $1;
 	A_exp right = $3;
-	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	A_exp op_exp = A_OpExp(EM_tokPos, A_eqOp, left, right);
 	//pr_exp(stdout, op_exp, INDENT);
 	$$ = op_exp;
 	//printf("\n");
@@ -236,7 +238,7 @@ binary_op_exp: exp PLUS exp
 {
 	A_exp left = $1;
 	A_exp right = $3;
-	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	A_exp op_exp = A_OpExp(EM_tokPos, A_ltOp, left, right);
 	//pr_exp(stdout, op_exp, INDENT);
 	$$ = op_exp;
 	//printf("\n");
@@ -245,7 +247,7 @@ binary_op_exp: exp PLUS exp
 {
 	A_exp left = $1;
 	A_exp right = $3;
-	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	A_exp op_exp = A_OpExp(EM_tokPos, A_leOp, left, right);
 	//pr_exp(stdout, op_exp, INDENT);
 	$$ = op_exp;
 	//printf("\n");
@@ -254,7 +256,7 @@ binary_op_exp: exp PLUS exp
 {
 	A_exp left = $1;
 	A_exp right = $3;
-	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	A_exp op_exp = A_OpExp(EM_tokPos, A_gtOp, left, right);
 	//pr_exp(stdout, op_exp, INDENT);
 	$$ = op_exp;
 	//printf("\n");
@@ -263,7 +265,7 @@ binary_op_exp: exp PLUS exp
 {
 	A_exp left = $1;
 	A_exp right = $3;
-	A_exp op_exp = A_OpExp(EM_tokPos, A_divideOp, left, right);
+	A_exp op_exp = A_OpExp(EM_tokPos, A_geOp, left, right);
 	//pr_exp(stdout, op_exp, INDENT);
 	$$ = op_exp;
 	//printf("\n");
@@ -361,19 +363,19 @@ val_assign_exp:	lvalue ASSIGN exp
 lvalue: ID						
 {	
 	A_var id_var = A_SimpleVar(EM_tokPos, S_Symbol($1));
-	pr_var(stdout, id_var, INDENT);
+	//pr_var(stdout, id_var, INDENT);
 	$$ = id_var;	
 }
 | lvalue DOT ID			
 {	
 	A_var field_var = A_FieldVar(EM_tokPos, $1, S_Symbol($3));
-	pr_var(stdout, field_var, INDENT);
+	//pr_var(stdout, field_var, INDENT);
 	$$ = field_var;	
 }
 | lvalue LBRACK exp RBRACK	
 {	
 	A_var subscript_var = A_SubscriptVar(EM_tokPos, $1, $3);
-	pr_var(stdout, subscript_var, INDENT);
+	//pr_var(stdout, subscript_var, INDENT);
 	$$ = subscript_var;	
  }
 ;
