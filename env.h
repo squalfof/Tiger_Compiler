@@ -3,6 +3,8 @@
 #include "absyn.h"
 #include "types.h"
 
+#define NULL 0
+
 typedef struct E_enventry_ *E_enventry;
 struct E_enventry_
 {
