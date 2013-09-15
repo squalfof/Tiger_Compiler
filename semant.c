@@ -29,6 +29,26 @@ struct expty expTy(Tr_exp exp, Ty_ty ty)
 	return e;
 }
 
+BOOL IsTypeEqual(Ty_ty aTy, Ty_ty bTy)
+{
+	if (Ty_record == aTy->kind)
+	{
+		if ((aTy != bTy) && (Ty_nil != bTy->kind))
+			return FALSE;
+	}
+	else if (Ty_array == aTy->kind)
+	{
+		if (aTy != bTy)
+			return FALSE;
+	}
+	else if (aTy->kind != bTy->kind)
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
 
 
 //////////////////////////////////////////////////////////////////
@@ -121,8 +141,6 @@ struct expty transVarExp(S_table venv, S_table tenv, A_exp a)
 	{
 	case A_simpleVar:
 		{
-			//E_enventry varEntry = S_look(venv, var->u.simple);
-			//return expTy(0, varEntry->u.var.ty);
 			return transSimpleVar(venv, tenv, var);
 		}
 	case A_fieldVar: // TBC...
@@ -136,8 +154,7 @@ struct expty transVarExp(S_table venv, S_table tenv, A_exp a)
 		}
 	default:
 		{
-			//EM_error(
-			return expTy(0, Ty_Int());
+			return expTy(0, NULL);
 		}
 	}
 }
@@ -164,16 +181,19 @@ struct expty transCallExp(S_table venv, S_table tenv, A_exp a)
 	E_enventry funEntry = S_look(venv, a->u.call.func);
 	Ty_tyList formalTyList = funEntry->u.fun.formals;
 	// param & args type compare
-	for (; expList; expList = expList->tail, formalTyList = formalTyList->tail)
+	for (; expList && formalTyList; expList = expList->tail, formalTyList = formalTyList->tail)
 	{
 		struct expty argTy = transExp(venv, tenv, expList->head);
-		if (argTy.ty->kind != formalTyList->head->kind)
+		if (!IsTypeEqual(argTy.ty, formalTyList->head))
 		{
 			EM_error(a->pos, "Callee Function %s Param Type Mismatch",
 				S_name(a->u.call.func));
 			return expTy(NULL, Ty_Int());
 		}
 	}
+
+	if (expList || formalTyList)
+		EM_error(a->pos, "Caller passed args number incorrect");
 
 	return expTy(NULL, funEntry->u.fun.result);
 }
@@ -184,9 +204,9 @@ struct expty transOpExp(S_table venv, S_table tenv, A_exp a)
 	A_oper oper = a->u.op.oper;
 	struct expty left = transExp(venv, tenv, a->u.op.left);
 	struct expty right = transExp(venv, tenv, a->u.op.right);
-	if (left.ty->kind != Ty_int)
+	if (Ty_int != left.ty->kind)
 		EM_error(a->u.op.left->pos, "integer required");
-	if (right.ty->kind != Ty_int)
+	if (Ty_int != right.ty->kind)
 		EM_error(a->u.op.right->pos, "integer required");
 	return expTy(NULL, Ty_Int());
 }
@@ -196,7 +216,6 @@ struct expty transRecordExp(S_table venv, S_table tenv, A_exp a)
 {
 	Ty_ty recordTy = S_look(tenv, a->u.record.typ);
 	// 
-	//Ty_ty record = S_look(tenv, a->u.record.typ);
 	Ty_fieldList fieldList = recordTy->u.record;
 	A_efieldList efieldList = a->u.record.fields;
 	for (; fieldList && efieldList; fieldList = fieldList->tail, efieldList = efieldList->tail)
@@ -204,13 +223,10 @@ struct expty transRecordExp(S_table venv, S_table tenv, A_exp a)
 		Ty_field field = fieldList->head;
 		A_efield efield = efieldList->head;
 		struct expty efieldTy = transExp(venv, tenv, efield->exp);
-		if (Ty_record == field->ty->kind) // special treatment for record type
+		if (!IsTypeEqual(field->ty, efieldTy.ty))
 		{
-			if ((field->ty != efieldTy.ty) && (Ty_nil != efieldTy.ty->kind))
-				EM_error(a->pos, "Record Assignment Type Mismatch [%s]", S_name(field->name));
-		}
-		else if (field->ty->kind != efieldTy.ty->kind)
 			EM_error(a->pos, "Record Assignment Type Mismatch [%s]", S_name(field->name));
+		}
 	}
 
 	if (fieldList || efieldList)
@@ -407,17 +423,7 @@ void transVarDec(S_table venv, S_table tenv, A_dec d)
 			return;
 		}
 
-		if (Ty_record == varTy->kind)
-		{
-			if ((varTy != e.ty) && (Ty_nil != e.ty->kind))
-				EM_error(d->pos, "Record Type required");
-		}
-		else if (Ty_array == varTy->kind)
-		{
-			if (varTy != e.ty)
-				EM_error(d->pos, "Record Type required");
-		}
-		else if (varTy->kind != e.ty->kind)
+		if (!IsTypeEqual(varTy, e.ty))
 		{
 			EM_error(d->pos, "Var dec Type mismatch");
 			return;
