@@ -1,4 +1,3 @@
-
 #include "absyn.h"
 #include "errormsg.h"
 #include "semant.h"
@@ -41,11 +40,12 @@ struct expty transCallExp(S_table venv, S_table tenv, A_exp a);
 struct expty transOpExp(S_table venv, S_table tenv, A_exp a);
 struct expty transRecordExp(S_table venv, S_table tenv, A_exp a);
 struct expty transSeqExp(S_table venv, S_table tenv, A_exp a);
-struct expty transArrayExp(S_table venv, S_table tenv, A_exp a);
+struct expty transAssignExp(S_table venv, S_table tenv, A_exp a);
 struct expty transIfExp(S_table venv, S_table tenv, A_exp a);
 struct expty transWhileExp(S_table venv, S_table tenv, A_exp a);
 struct expty transForExp(S_table venv, S_table tenv, A_exp a);
 struct expty transLetExp(S_table venv, S_table tenv, A_exp a);
+struct expty transArrayExp(S_table venv, S_table tenv, A_exp a);
 
 struct expty transExp(S_table venv, S_table tenv, A_exp a)
 {
@@ -54,6 +54,10 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a)
 	case A_varExp:
 		{
 			return transVarExp(venv, tenv, a);
+		}
+	case A_nilExp:
+		{
+			return expTy(0, Ty_Nil());
 		}
 	case A_intExp:
 		{
@@ -79,9 +83,9 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a)
 		{
 			return transSeqExp(venv, tenv, a);
 		}
-	case A_arrayExp:
+	case A_assignExp:
 		{
-			return transArrayExp(venv, tenv, a);
+			transAssignExp(venv, tenv, a);
 		}
 	case A_ifExp:
 		{
@@ -98,6 +102,10 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a)
 	case A_letExp:
 		{
 			return transLetExp(venv, tenv, a);
+		}
+	case A_arrayExp:
+		{
+			return transArrayExp(venv, tenv, a);
 		}
 	}
 }
@@ -185,7 +193,28 @@ struct expty transOpExp(S_table venv, S_table tenv, A_exp a)
 // ---------------------------------------------------------
 struct expty transRecordExp(S_table venv, S_table tenv, A_exp a)
 {
-	Ty_ty recordTy = actual_ty( S_look(tenv, a->u.record.typ) );
+	Ty_ty recordTy = S_look(tenv, a->u.record.typ);
+	// 
+	//Ty_ty record = S_look(tenv, a->u.record.typ);
+	Ty_fieldList fieldList = recordTy->u.record;
+	A_efieldList efieldList = a->u.record.fields;
+	for (; fieldList && efieldList; fieldList = fieldList->tail, efieldList = efieldList->tail)
+	{
+		Ty_field field = fieldList->head;
+		A_efield efield = efieldList->head;
+		struct expty efieldTy = transExp(venv, tenv, efield->exp);
+		if (Ty_record == field->ty->kind) // special treatment for record type
+		{
+			if ((field->ty != efieldTy.ty) && (Ty_nil != efieldTy.ty->kind))
+				EM_error(a->pos, "Record Assignment Type Mismatch [%s]", S_name(field->name));
+		}
+		else if (field->ty->kind != efieldTy.ty->kind)
+			EM_error(a->pos, "Record Assignment Type Mismatch [%s]", S_name(field->name));
+	}
+
+	if (fieldList || efieldList)
+		EM_error(a->pos, "Record Assignment Illegal [%s]", S_name(a->u.record.typ));
+
 	return expTy(NULL, recordTy);
 }
 
@@ -197,6 +226,12 @@ struct expty transSeqExp(S_table venv, S_table tenv, A_exp a)
 	for (; expList; expList = expList->tail )
 		curExpTy = transExp(venv, tenv, expList->head);
 	return curExpTy; // return the expty of the last exp, TBC...
+}
+
+// ---------------------------------------------------------
+struct expty transAssignExp(S_table venv, S_table tenv, A_exp a)
+{
+	return expTy(0, Ty_Int());
 }
 
 // ---------------------------------------------------------
@@ -282,12 +317,14 @@ void transDec(S_table venv, S_table tenv, A_dec d)
 }
 
 //----------------------------------------------------------------------
-void transRecordTyDec(S_table tenv, A_namety namety);
+void transRecordTyDec(S_table tenv, A_namety nameTy);
+
 void transTypeDec(S_table venv, S_table tenv, A_dec d)
 {
 	Ty_ty tyTy = 0;
-	A_nametyList nametyList = d->u.type;
-	for (; nametyList; nametyList = nametyList->tail)
+	A_nametyList nametyList = 0;
+	// 1st round, we could handle record head part
+	for (nametyList = d->u.type; nametyList; nametyList = nametyList->tail)
 	{
 		A_namety nameTy = nametyList->head;
 		switch (nameTy->ty->kind)
@@ -300,7 +337,7 @@ void transTypeDec(S_table venv, S_table tenv, A_dec d)
 			}
 		case A_recordTy:
 			{
-				transRecordTyDec(tenv, nameTy);
+				S_enter(tenv, nameTy->name, Ty_Record(NULL));
 				break;
 			}
 		case A_arrayTy:
@@ -311,6 +348,21 @@ void transTypeDec(S_table venv, S_table tenv, A_dec d)
 			}
 		}
 	}
+
+	// 2nd part, record body part
+	for (nametyList = d->u.type; nametyList; nametyList = nametyList->tail)
+	{
+		A_namety nameTy = nametyList->head;
+		switch (nameTy->ty->kind)
+		{
+		case A_recordTy:
+			{
+				transRecordTyDec(tenv, nameTy);
+				break;
+			}
+		}
+	}
+
 }
 
 Ty_fieldList transFieldListTyDec(S_table tenv, A_fieldList fieldList)
@@ -319,53 +371,48 @@ Ty_fieldList transFieldListTyDec(S_table tenv, A_fieldList fieldList)
 		return NULL;
 	else
 	{
-		Ty_field field = Ty_Field(fieldList->head->name, S_look(tenv, fieldList->head->typ));
+		Ty_ty fieldTy = S_look(tenv, fieldList->head->typ);
+		Ty_field field = Ty_Field(fieldList->head->name, fieldTy);
 		return Ty_FieldList(field, transFieldListTyDec(tenv, fieldList->tail));
 	}
 }
 
-void transRecordTyDec(S_table tenv, A_namety recordTy)
+void transRecordTyDec(S_table tenv, A_namety nameTy)
 {
-	Ty_ty nameTy = 0;
-	Ty_fieldList fieldList = 0;
-	// first round
-	S_enter(tenv, recordTy->name, Ty_Name(recordTy->name, NULL));
-	fieldList = transFieldListTyDec(tenv, recordTy->ty->u.record);
-	// second round
-	nameTy = S_look(tenv, recordTy->name);
-	nameTy->u.name.ty = Ty_Record(fieldList);
-	//S_enter(tenv, recordTy->name, Ty_Record(fieldList) );
+	Ty_ty recordTy = S_look(tenv, nameTy->name);
+	Ty_fieldList fieldList = transFieldListTyDec(tenv, nameTy->ty->u.record);
+	recordTy->u.record = fieldList;
 	
 	return;
 }
+
 //----------------------------------------------------------------
 void transVarDec(S_table venv, S_table tenv, A_dec d)
 {
-	Ty_ty varty = NULL;
+	Ty_ty varTy = NULL;
 	struct expty e = transExp(venv, tenv, d->u.var.init);
 	if (d->u.var.typ) // var x : type-id := exp
 	{
 		//// shall we use actual_ty here? TBD...
-		varty = actual_ty( S_look(tenv, d->u.var.typ) );
-		if (0 == varty)
+		varTy = S_look(tenv, d->u.var.typ);
+		if (0 == varTy)
 		{
 			EM_error(d->pos, "undefined var type"); 
 			return;
 		}
 
-		/*if ((Ty_nil == e.ty->kind) && (Ty_record != varty->kind))
+		if (Ty_record == varTy->kind)
 		{
-			EM_error(d->pos, "Record Type required");
-			return;
-		}*/
-
-		if (varty->kind != e.ty->kind)
+			if ((varTy != e.ty) && (Ty_nil != e.ty->kind))
+				EM_error(d->pos, "Record Type required");
+		}
+		else if (varTy->kind != e.ty->kind)
 		{
 			EM_error(d->pos, "Var dec Type mismatch");
 			return;
 		}
 	}
-	S_enter(tenv, d->u.var.var, varty);
+	S_enter(tenv, d->u.var.var, varTy);
 	S_enter(venv, d->u.var.var, E_VarEntry(e.ty));
 }
 
