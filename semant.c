@@ -1,3 +1,4 @@
+
 #include "absyn.h"
 #include "errormsg.h"
 #include "semant.h"
@@ -238,7 +239,12 @@ struct expty transAssignExp(S_table venv, S_table tenv, A_exp a)
 struct expty transArrayExp(S_table venv, S_table tenv, A_exp a)
 {   // arrtype [10] of 0
 	struct expty initExpTy = transExp(venv, tenv, a->u.array.init);
-	Ty_ty arrTy = Ty_Array(initExpTy.ty);
+	Ty_ty arrTy = S_look(tenv, a->u.array.typ);
+	if (arrTy->u.array->kind != initExpTy.ty->kind)
+	{
+		EM_error(a->pos, "Array Exp Mismatch [%s]", S_name(a->u.array.typ));
+		return expTy(0, NULL);
+	}
 	//struct expty sizeExpTy = transExp(venv, tenv, a->u.array.size);
 	return expTy(0, arrTy);
 }
@@ -406,6 +412,11 @@ void transVarDec(S_table venv, S_table tenv, A_dec d)
 			if ((varTy != e.ty) && (Ty_nil != e.ty->kind))
 				EM_error(d->pos, "Record Type required");
 		}
+		else if (Ty_array == varTy->kind)
+		{
+			if (varTy != e.ty)
+				EM_error(d->pos, "Record Type required");
+		}
 		else if (varTy->kind != e.ty->kind)
 		{
 			EM_error(d->pos, "Var dec Type mismatch");
@@ -448,3 +459,4 @@ void transFunDec(S_table venv, S_table tenv, A_dec d)
 		S_endScope(venv);
 	}
 }
+
